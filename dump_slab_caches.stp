@@ -1,0 +1,44 @@
+#!/usr/bin/stap -g
+/*
+ * Copyright (C) 2012 Canonical
+ * Author: Chris J Arges <chris.j.arges@canonical.com>
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ */
+
+%{
+#include <linux/slub_def.h>
+%}
+
+function dump_slab_caches(ptr: long)
+%{
+	/* Cast ptr as the head, and traverse slab_caches. */
+	struct list_head *head = (struct list_head *)(long)THIS->ptr;
+	struct kmem_cache *s;
+	list_for_each_entry(s, head, list) {
+		_stp_printf("%p: %-20.20s\t%d\t%d\t%p\n", s, s->name, s->size, s->refcount, s->cpu_slab);
+	}
+%}
+
+probe kernel.function("kmem_cache_alloc") 
+{
+	/* because we can't access just the global ptr to
+	   slab_caches, we have to do this next->prev 
+	   nonsense. suggestions are welcome */
+	dump_slab_caches($slab_caches->next->prev);
+	exit();
+}
+
