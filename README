@@ -8,3 +8,4 @@ Authors:
 
 Description:
 	dump_slab_caches - dumps basic contents of slab caches
+	dump_per_cpu - dumps per cpu data

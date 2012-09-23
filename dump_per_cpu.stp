@@ -24,7 +24,7 @@
 void dump_bytes(void *addr, int bytes) {
 	int i;
 	for (i=0;i<bytes;i++) {
-		/* need to check each byte before printing */
+		/* need to check if each byte is a valid addr */
 		unsigned long *check_ptr = (unsigned long *)(addr + i);
 		if (virt_addr_valid(check_ptr))
 			_stp_printf("%016lx ", *check_ptr);
@@ -35,29 +35,23 @@ void dump_bytes(void *addr, int bytes) {
 }
 %}
 
-function dump_slab_caches(ptr: long)
+function dump_per_cpu()
 %{
-	/* Cast ptr as the head, and traverse slab_caches. */
-	struct list_head *head = (struct list_head *)(long)THIS->ptr;
-	struct kmem_cache *s;
 	int cpu;
+	void *c;
 
-	list_for_each_entry(s, head, list) {
-		_stp_printf("%p: %-20.20s\t%d\t%d\t%p\n", s, s->name, s->size, s->refcount, s->cpu_slab);
-		/*for_each_online_cpu(cpu) {
-			void *p = (void *)per_cpu_ptr(s->cpu_slab, cpu);
-			_stp_printf("\t%lx: ", (unsigned long)p);
-			dump_bytes(p, 4);
-		}*/
+	/* dump the addresses of the per cpu regions */
+	for_each_possible_cpu(cpu) {
+		c = (void *)__per_cpu_offset[cpu];
+		_stp_printf("CPU#%d @ %lx : ", cpu, __per_cpu_offset[cpu]);
+		dump_bytes(c, 4);
 	}
+
 %}
 
-probe kernel.function("kmem_cache_alloc").return
+probe begin
 {
-	/* because we can't access just the global ptr to
-	   slab_caches, we have to do this next->prev 
-	   nonsense. suggestions are welcome */
-	dump_slab_caches($slab_caches->next->prev);
+	dump_per_cpu();
 	exit();
 }
 
