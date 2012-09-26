@@ -22,6 +22,23 @@
 %{
 #include <linux/sched.h>
 #include <linux/types.h>
+#include <linux/cred.h>
+#include <linux/kernel.h>
+
+const struct cred *get_task_cred(struct task_struct *task)
+{
+        const struct cred *cred;
+
+        rcu_read_lock();
+
+        do {
+                cred = __task_cred((task));
+                BUG_ON(!cred);
+        } while (!atomic_inc_not_zero(&((struct cred *)cred)->usage));
+
+        rcu_read_unlock();
+        return cred;
+}
 
 struct aa_policy {
         char *name;
@@ -38,32 +55,35 @@ struct aa_profile {
         struct aa_profile *replacedby;
 };
 
+struct aa_task_cxt {
+        struct aa_profile *profile;
+        struct aa_profile *onexec;
+        struct aa_profile *previous;
+        u64 token;
+};
+
 %}
 
-function aa_profile_len(ptr:long)
+function dump_aa:string(ptr:long)
 %{
-	struct aa_profile *profile = (struct aa_profile *)(long)THIS->ptr;
 	int n = 0;
-
+	struct task_struct *task = (struct task_struct *)(long)THIS->ptr;
+	char *comm = task->comm;
+	const struct cred *cred = get_task_cred(task);
+	struct aa_task_cxt *cxt = (struct aa_task_cxt *)cred->security;
+	struct aa_profile *profile = (struct aa_profile *)cxt->profile;
 	while (profile->replacedby) {
 		profile = profile->replacedby;
 		n++;
 	}
-	printk("%lx\t%d\n", (long)THIS->ptr, n);
+	put_cred(cred);
+	if (n)
+		sprintf(THIS->__retvalue,"AA-TRACE: %-20.20s\t%lx\t%d\n", comm, (long)task, n);
+
 %}
 
-function print_comm(comm:long)
-%{
-	printk("%-20.20s\t", (char *)(long)THIS->comm);
-%}
-
-probe kernel.function("apparmor_getprocattr") {
-	print_comm($task->comm);
-}
-
-/* natty=524, quantal=572 */
-probe kernel.statement("*@security/apparmor/lsm.c:572") {
-	aa_profile_len($cxt->profile);
+probe kernel.function("apparmor_getprocattr").call {
+	printf("%s",dump_aa($task));
 }
 
 probe timer.ms(10000) {
