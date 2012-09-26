@@ -1,0 +1,72 @@
+#!/usr/bin/stap -g
+/*
+ * Copyright (C) 2012 Canonical
+ * Author: Chris J Arges <chris.j.arges@canonical.com>
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ */
+
+%{
+#include <linux/sched.h>
+#include <linux/types.h>
+
+struct aa_policy {
+        char *name;
+        char *hname;
+        struct kref count;
+        struct list_head list;
+        struct list_head profiles;
+};
+
+struct aa_profile {
+        struct aa_policy base;
+        struct aa_profile *parent;
+        void * ns;
+        struct aa_profile *replacedby;
+};
+
+%}
+
+function aa_profile_len(ptr:long)
+%{
+	struct aa_profile *profile = (struct aa_profile *)(long)THIS->ptr;
+	int n = 0;
+
+	while (profile->replacedby) {
+		profile = profile->replacedby;
+		n++;
+	}
+	printk("%lx\t%d\n", (long)THIS->ptr, n);
+%}
+
+function print_comm(comm:long)
+%{
+	printk("%-20.20s\t", (char *)(long)THIS->comm);
+%}
+
+probe kernel.function("apparmor_getprocattr") {
+	print_comm($task->comm);
+}
+
+/* natty=524, quantal=572 */
+probe kernel.statement("*@security/apparmor/lsm.c:572") {
+	aa_profile_len($cxt->profile);
+}
+
+probe timer.ms(10000) {
+	exit();
+}
+
