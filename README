@@ -1,4 +1,4 @@
-Systemtap Scripts for Sustaining Engineering Group
+Systemtap Scripts
 --
 
 A set of systemtap scripts used for debugging.
@@ -9,3 +9,4 @@ Authors:
 Description:
 	dump_slab_caches - dumps basic contents of slab caches
 	dump_per_cpu - dumps per cpu data
+	probe_virtio_net - trace functions in virtio net driver
